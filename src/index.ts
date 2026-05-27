@@ -16,11 +16,13 @@ import { startTracing, stopTracing } from './tracing/index.js';
 startTracing();
 
 import http from 'node:http';
-import { gracefulShutdown, addShutdownHook } from './shutdown.js';
+import { createApp } from './app.js';
+import { gracefulShutdown, addShutdownHook, addDrainableShutdownHook } from './shutdown.js';
 import { logger } from './lib/logger.js';
 import { checkPendingMigrations } from './db/migrate.js';
 import { getPool } from './db/pool.js';
 import { createStreamHub, getStreamHub } from './ws/hub.js';
+import { webhookDispatcher } from './webhooks/service.js';
 
 // Export a pre-built app instance for use in tests and other consumers.
 export { app } from './app.js';
@@ -45,6 +47,9 @@ async function startServer() {
     logger.info('WebSocket hub initialized', undefined, { path: '/ws/streams' });
 
     // Register shutdown hooks
+    webhookDispatcher.start();
+    addDrainableShutdownHook(webhookDispatcher);
+
     addShutdownHook(async () => {
       logger.info('Flushing OpenTelemetry spans...');
       await stopTracing();
