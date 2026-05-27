@@ -64,6 +64,8 @@ export interface Config {
     indexerStallThresholdMs: number;
     indexerLastSuccessfulSyncAt?: string | undefined;
     deploymentChecklistVersion: string;
+    oidcIssuerUrl?: string | undefined;
+    oidcAudience?: string | undefined;
 }
 
 /**
@@ -281,6 +283,8 @@ export function loadConfig(): Config {
         indexerStallThresholdMs: parseIntEnv(process.env.INDEXER_STALL_THRESHOLD_MS, 5 * 60 * 1000, 1000),
         indexerLastSuccessfulSyncAt: process.env.INDEXER_LAST_SUCCESSFUL_SYNC_AT,
         deploymentChecklistVersion: process.env.DEPLOYMENT_CHECKLIST_VERSION ?? '2026-03-27',
+        oidcIssuerUrl: process.env.OIDC_ISSUER_URL ? validateUrl(process.env.OIDC_ISSUER_URL, 'OIDC_ISSUER_URL') : undefined,
+        oidcAudience: process.env.OIDC_AUDIENCE,
     };
 
     return config;
