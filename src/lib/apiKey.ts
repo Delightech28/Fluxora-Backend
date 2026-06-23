@@ -50,7 +50,18 @@ const SALT_BYTES = 16;
 const RAW_KEY_BYTES = 32;
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Default scopes for backward compatibility with existing API keys.
+ * Legacy keys (created before scopes feature) get full access.
+ */
+export const DEFAULT_SCOPES = ['streams:read', 'streams:write'];
+
+// ---------------------------------------------------------------------------
 // Hashing helpers
+// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 
 /**
@@ -108,14 +119,16 @@ function hashesMatch(a: string, b: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a new API key. Returns the record plus the raw key (shown once).
+/**
+ * Creates a new API key with optional scopes. Returns the record plus the raw key (shown once).
  *
  * Persists a salted/peppered hash and emits an `API_KEY_CREATED` audit row.
  *
  * @param name          - Human-readable label for the key.
+ * @param scopes        - Optional array of scopes (e.g., ['streams:read', 'streams:write']). Defaults to DEFAULT_SCOPES.
  * @param correlationId - Optional request correlation id for the audit trail.
  */
-export async function createApiKey(name: string, correlationId?: string): Promise<ApiKeyCreated> {
+export async function createApiKey(name: string, scopes?: string[], correlationId?: string): Promise<ApiKeyCreated> {
   if (!name || typeof name !== 'string' || !name.trim()) {
     throw new Error('name is required');
   }
@@ -124,6 +137,7 @@ export async function createApiKey(name: string, correlationId?: string): Promis
   const salt = randomBytes(SALT_BYTES).toString('hex');
   const id = createId();
   const now = new Date().toISOString();
+  const keyScopes = scopes && scopes.length > 0 ? scopes : DEFAULT_SCOPES;
 
   const record: ApiKeyRecord = {
     id,
@@ -134,6 +148,7 @@ export async function createApiKey(name: string, correlationId?: string): Promis
     createdAt: now,
     rotatedAt: null,
     active: true,
+    scopes: keyScopes,
   };
 
   await apiKeyRepository.insert(record);
@@ -147,6 +162,7 @@ export async function createApiKey(name: string, correlationId?: string): Promis
 
 /**
  * Rotates an existing key: invalidates the old hash and issues a new raw key.
+ * Preserves the existing scopes.
  * Returns the new raw key (shown once) and emits an `API_KEY_ROTATED` audit row.
  *
  * @param id            - Identifier of the key to rotate.
@@ -166,6 +182,7 @@ export async function rotateApiKey(id: string, correlationId?: string): Promise<
     salt,
     prefix: raw.slice(0, PREFIX_LENGTH),
     rotatedAt: now,
+    scopes: record.scopes,
   });
   if (!updated) throw new Error(`API key not found: ${id}`);
 
@@ -248,4 +265,54 @@ export function getApiKeyFromRequest(
   const key = headers['x-api-key'] || headers['X-API-Key'];
   if (Array.isArray(key)) return key[0];
   return key;
+}
+
+/**
+ * Retrieves the scopes for an API key by its ID.
+ * Returns the scopes array or undefined if the key is not found.
+ */
+export function getApiKeyScopes(id: string): string[] | undefined {
+  const record = store.get(id);
+  return record?.scopes;
+}
+
+/**
+ * Validates if an API key has a specific scope.
+ * Returns true if the keyxists, is active, and has the required scope.
+ */
+export function hasScope(keyId: string, requiredScope: string): boolean {
+  const record = store.get(keyId);
+  if (!record || !record.active) return false;
+  return record.scopes.includes(requiredScope);
+}
+
+/**
+ * Retrieves a key record by raw API key value.
+ * Used for authentication to get the full record (including scopes).
+ * Exposed for middleware/auth use.
+ */
+export function getApiKeyRecord(rawKey: string): ApiKeyRecord | undefined {
+  if (!rawKey) return undefined;
+
+  const hash = sha256hex(rawKey);
+  const hashBuf = Buffer.from(hash, 'hex');
+
+  for (const record of store.values()) {
+    if (!record.active) continue;
+    try {
+      const storedBuf = Buffer.from(record.keyHash, 'hex');
+      if (storedBuf.length === hashBuf.length && timingSafeEqual(storedBuf, hashBuf)) {
+        return record;
+      }
+    } catch {
+      // length mismatch — skip
+    }
+  }
+
+  return undefined;
+}
+
+/** Exposed for tests only — clears the in-memory store. */
+export function _resetApiKeyStoreForTest(): void {
+  store.clear();
 }

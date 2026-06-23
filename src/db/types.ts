@@ -194,6 +194,8 @@ export interface ApiKeyRecord {
   rotatedAt: string | null;
   /** Whether the key is still active */
   active: boolean;
+  /** Scopes/permissions granted to this API key (e.g., 'streams:read', 'streams:write') */
+  scopes: string[];
 }
 
 /**

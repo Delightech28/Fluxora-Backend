@@ -69,7 +69,7 @@ import {
 import { requireIdempotencyKey, parseIdempotencyKeyHeader } from '../middleware/requestProtection.js';
 import { SerializationLogger, info, debug, warn } from '../utils/logger.js';
 import { recordAuditEvent } from '../lib/auditLog.js';
-import { authenticate, requireAuth } from '../middleware/auth.js';
+import { authenticate, requireAuth, authenticateApiKey, requireScope } from '../middleware/auth.js';
 import { successResponse, idempotentReplayResponse } from '../utils/response.js';
 import { streamRepository } from '../db/repositories/streamRepository.js';
 import { PoolExhaustedError } from '../db/pool.js';
@@ -412,6 +412,8 @@ export function enforceStreamScope(req: Request, res: Response, next: NextFuncti
  */
 streamsRouter.get(
   '/',
+  authenticateApiKey,
+  requireScope('streams:read'),
   asyncHandler(async (req: Request, res: Response) => {
     const requestId = req.id as string | undefined;
 
@@ -524,6 +526,8 @@ streamsRouter.head(
  */
 streamsRouter.get(
   '/:id',
+  authenticateApiKey,
+  requireScope('streams:read'),
   asyncHandler(async (req: Request, res: Response) => {
     const id = req.params['id'];
     const requestId = req.id;
@@ -563,6 +567,8 @@ streamsRouter.post(
   '/',
   authenticate,
   requireAuth,
+  authenticateApiKey,
+  requireScope('streams:write'),
   requireIdempotencyKey,
   asyncHandler(async (req: Request, res: Response) => {
     const requestId = req.id;
@@ -690,6 +696,8 @@ streamsRouter.delete(
   '/:id',
   authenticate,
   requireAuth,
+  authenticateApiKey,
+  requireScope('streams:write'),
   asyncHandler(async (req: Request, res: Response) => {
     const id = req.params['id'];
     const requestId = req.id;
@@ -793,6 +801,8 @@ streamsRouter.patch(
  */
 streamsRouter.get(
   '/:id/events',
+  authenticateApiKey,
+  requireScope('streams:read'),
   asyncHandler(async (req: Request, res: Response) => {
     const id = req.params['id'];
     const requestId = req.id;
